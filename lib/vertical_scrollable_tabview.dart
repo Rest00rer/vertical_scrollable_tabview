@@ -76,8 +76,7 @@ class VerticalScrollableTabView extends StatefulWidget {
     required TabController tabController,
     required List<dynamic> listItemData,
     required Widget Function(dynamic aaa, int index) eachItemChild,
-    VerticalScrollPosition verticalScrollPosition =
-        VerticalScrollPosition.begin,
+    VerticalScrollPosition verticalScrollPosition = VerticalScrollPosition.begin,
 
     /// Copy Scrollbar
     bool? scrollbarThumbVisibility,
@@ -101,8 +100,7 @@ class VerticalScrollableTabView extends StatefulWidget {
     required List<Widget> slivers,
     int? semanticChildCount,
     DragStartBehavior dragStartBehavior = DragStartBehavior.start,
-    ScrollViewKeyboardDismissBehavior keyboardDismissBehavior =
-        ScrollViewKeyboardDismissBehavior.manual,
+    ScrollViewKeyboardDismissBehavior keyboardDismissBehavior = ScrollViewKeyboardDismissBehavior.manual,
     String? restorationId,
     Clip clipBehavior = Clip.hardEdge,
   })  : _tabController = tabController,
@@ -139,12 +137,10 @@ class VerticalScrollableTabView extends StatefulWidget {
         super(key: key);
 
   @override
-  State<VerticalScrollableTabView> createState() =>
-      _VerticalScrollableTabViewState();
+  State<VerticalScrollableTabView> createState() => _VerticalScrollableTabViewState();
 }
 
-class _VerticalScrollableTabViewState extends State<VerticalScrollableTabView>
-    with SingleTickerProviderStateMixin {
+class _VerticalScrollableTabViewState extends State<VerticalScrollableTabView> with SingleTickerProviderStateMixin {
   /// Instantiate RectGetter（套件提供的方法）
   final listViewKey = RectGetter.createGlobalKey();
 
@@ -239,32 +235,66 @@ class _VerticalScrollableTabViewState extends State<VerticalScrollableTabView>
     widget._tabController.animateTo(index);
     switch (widget._verticalScrollPosition) {
       case VerticalScrollPosition.begin:
-        widget._autoScrollController
-            .scrollToIndex(index, preferPosition: AutoScrollPosition.begin);
+        widget._autoScrollController.scrollToIndex(index, preferPosition: AutoScrollPosition.begin);
         break;
       case VerticalScrollPosition.middle:
-        widget._autoScrollController
-            .scrollToIndex(index, preferPosition: AutoScrollPosition.middle);
+        widget._autoScrollController.scrollToIndex(index, preferPosition: AutoScrollPosition.middle);
         break;
       case VerticalScrollPosition.end:
-        widget._autoScrollController
-            .scrollToIndex(index, preferPosition: AutoScrollPosition.end);
+        widget._autoScrollController.scrollToIndex(index, preferPosition: AutoScrollPosition.end);
         break;
     }
   }
 
-  /// onScrollNotification of NotificationListener
-  /// true表示消費掉當前通知不再向上一级NotificationListener傳遞通知，false則會再向上一级NotificationListener傳遞通知；
+  // подсписка на скролл пользователем и перекелючение на нужную категорию
   bool onScrollNotification(UserScrollNotification notification) {
-    List<int> visibleItems = getVisibleItemsIndex();
-    widget._tabController.animateTo(visibleItems[0]);
+    // * обработка для видимых элементов на экране
+    // List<int> visibleItems = getVisibleItemsIndex();
+    // if (notification.metrics.pixels < notification.metrics.maxScrollExtent) {
+    //   widget._tabController.animateTo(visibleItems[0]);
+    // } else {
+    //   widget._tabController.animateTo(visibleItems[visibleItems.length - 1]);
+    // }
+    // return false;
+    // * обработка для элемента, который ближе всего к центру экрана
+    int? centerItem = getCenterMostVisibleItemIndex();
+    if (centerItem == null) return false;
+    if (notification.metrics.pixels < notification.metrics.maxScrollExtent) {
+      widget._tabController.animateTo(centerItem);
+    } else {
+      widget._tabController.animateTo(widget._tabController.length - 1);
+    }
     return false;
   }
 
-  /// getVisibleItemsIndex on Screen
-  /// 取得現在畫面上可以看得到的 Items Index
+  // возвращаем id элемента, который ближе всего к центру экрана
+  int? getCenterMostVisibleItemIndex() {
+    Rect? rect = RectGetter.getRectFromKey(listViewKey);
+    if (rect == null) return null;
+
+    bool isHorizontalScroll = widget._scrollDirection == Axis.horizontal;
+    double center = isHorizontalScroll ? (rect.left + rect.right) / 2 : (rect.top + rect.bottom) / 2;
+
+    int? centerMostItemIndex;
+    double minDistance = double.infinity;
+
+    itemsKeys.forEach((index, key) {
+      Rect? itemRect = RectGetter.getRectFromKey(key);
+      if (itemRect == null) return;
+      double itemCenter =
+          isHorizontalScroll ? (itemRect.left + itemRect.right) / 2 : (itemRect.top + itemRect.bottom) / 2;
+      double distance = (itemCenter - center).abs();
+      if (distance < minDistance) {
+        minDistance = distance;
+        centerMostItemIndex = index;
+      }
+    });
+
+    return centerMostItemIndex;
+  }
+
+  // возвращаем список<id> элементов, которые находятся на экране
   List<int> getVisibleItemsIndex() {
-    // get ListView Rect
     Rect? rect = RectGetter.getRectFromKey(listViewKey);
     List<int> items = [];
     if (rect == null) return items;
@@ -273,11 +303,6 @@ class _VerticalScrollableTabViewState extends State<VerticalScrollableTabView>
     itemsKeys.forEach((index, key) {
       Rect? itemRect = RectGetter.getRectFromKey(key);
       if (itemRect == null) return;
-      // y 軸座越大，代表越下面
-      // 如果 item 上方的座標 比 listView 的下方的座標 的位置的大 代表不在畫面中。
-      // bottom meaning => The offset of the bottom edge of this widget from the y axis.
-      // top meaning => The offset of the top edge of this widget from the y axis.
-      //Change offset based on AxisOrientation [horizontal] [vertical]
       switch (isHorizontalScroll) {
         case true:
           if (itemRect.left > rect.right) return;
@@ -285,12 +310,7 @@ class _VerticalScrollableTabViewState extends State<VerticalScrollableTabView>
           break;
         case false:
           if (itemRect.top > rect.bottom) return;
-          // 如果 item 下方的座標 比 listView 的上方的座標 的位置的小 代表不在畫面中。
-          if (itemRect.bottom <
-              rect.top +
-                  MediaQuery.of(context).viewPadding.top +
-                  kToolbarHeight +
-                  56) return;
+          if (itemRect.bottom < rect.top + MediaQuery.of(context).viewPadding.top + kToolbarHeight + 56) return;
           break;
       }
 
